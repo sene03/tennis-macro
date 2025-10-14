@@ -28,23 +28,37 @@ class TennisGUI(tk.Tk):
         self.save_cred = tk.BooleanVar(value=True)
         ttk.Checkbutton(frm, text="아이디/비번 저장", variable=self.save_cred).grid(row=2, column=1, sticky="w", pady=4)
 
-        # 예약일
-        ttk.Label(frm, text="예약일(YYYY-MM-DD)").grid(row=3, column=0, sticky="w", pady=4)
-        self.entry_date = ttk.Entry(frm, width=30); self.entry_date.grid(row=3, column=1, sticky="w", pady=4)
+        # 예약일 -> replace free text with datepicker (year/month/day Comboboxes)
+        ttk.Label(frm, text="예약일").grid(row=3, column=0, sticky="w", pady=4)
+        date_row = ttk.Frame(frm); date_row.grid(row=3, column=1, sticky="w", pady=4)
+        # year combobox (current year and next year)
+        cur_year = dt.date.today().year
+        self.cb_year = ttk.Combobox(date_row, values=[str(cur_year), str(cur_year+1)], width=6, state="readonly")
+        self.cb_year.set(str(cur_year))
+        self.cb_year.grid(row=0, column=0, padx=(0,6))
+        # month combobox
+        self.cb_month = ttk.Combobox(date_row, values=[f"{m:02d}" for m in range(1,13)], width=4, state="readonly")
+        self.cb_month.set(f"{dt.date.today().month:02d}")
+        self.cb_month.grid(row=0, column=1, padx=(0,6))
+        # day combobox (will be populated based on year/month)
+        self.cb_day = ttk.Combobox(date_row, values=[f"{d:02d}" for d in range(1,32)], width=4, state="readonly")
+        self.cb_day.set(f"{dt.date.today().day:02d}")
+        self.cb_day.grid(row=0, column=2)
+        # bind updates to month/year change to refresh day list and time slots
+        self.cb_year.bind("<<ComboboxSelected>>", lambda e: self.on_date_change())
+        self.cb_month.bind("<<ComboboxSelected>>", lambda e: self.on_date_change())
 
         # 면 선택
         ttk.Label(frm, text="테니스장 면(1/2/3)").grid(row=4, column=0, sticky="w", pady=4)
         self.entry_office = ttk.Entry(frm, width=10); self.entry_office.insert(0, "1")
         self.entry_office.grid(row=4, column=1, sticky="w", pady=4)
 
-        # 시간 선택
+        # 시간 선택 (will be built dynamically based on season)
         ttk.Label(frm, text="선호 시간(복수 체크)").grid(row=5, column=0, sticky="nw", pady=4)
         self.time_vars = {}
-        time_box = ttk.Frame(frm); time_box.grid(row=5, column=1, sticky="w", pady=4)
-        for ix, hh in enumerate(["06","08","10","12","14","16","18","20"]):
-            var = tk.BooleanVar(value=False)
-            self.time_vars[hh] = var
-            ttk.Checkbutton(time_box, text=f"{hh}시", variable=var).grid(row=ix//4, column=ix%4, sticky="w", padx=4, pady=2)
+        self.time_box = ttk.Frame(frm); self.time_box.grid(row=5, column=1, sticky="w", pady=4)
+        # initial population based on today's month
+        self.rebuild_time_slots()
 
         # 관내/관외
         ttk.Label(frm, text="주거지").grid(row=6, column=0, sticky="w", pady=4)
@@ -74,6 +88,62 @@ class TennisGUI(tk.Tk):
         # 첫 실행 시 저장된 계정 로드
         self.load_creds(silent=True)
 
+    # ---- date/time helpers ----
+
+    def on_date_change(self):
+        # refresh day values based on selected year/month
+        try:
+            y = int(self.cb_year.get())
+            m = int(self.cb_month.get())
+        except Exception:
+            return
+        # compute days in month
+        if m == 12:
+            next_month = dt.date(y+1, 1, 1)
+        else:
+            next_month = dt.date(y, m+1, 1)
+        first = dt.date(y, m, 1)
+        days = (next_month - first).days
+        day_values = [f"{d:02d}" for d in range(1, days+1)]
+        cur_day = self.cb_day.get()
+        self.cb_day['values'] = day_values
+        if cur_day not in day_values:
+            self.cb_day.set(day_values[0])
+        # also rebuild time slots because season may change when month changes
+        self.rebuild_time_slots()
+
+    def selected_date(self) -> dt.date:
+        return dt.date(int(self.cb_year.get()), int(self.cb_month.get()), int(self.cb_day.get()))
+
+    def is_winter(self, date_obj: dt.date) -> bool:
+        # winter: November(11), December(12), January(1), February(2)
+        return date_obj.month in (11, 12, 1, 2)
+
+    def build_time_hours_for_date(self, date_obj: dt.date):
+        # return list of hour strings with 2-hour steps depending on season
+        if self.is_winter(date_obj):
+            start, end = 7, 19
+        else:
+            start, end = 6, 20
+        hours = list(range(start, end+1, 2))
+        return [f"{h:02d}" for h in hours]
+
+    def rebuild_time_slots(self):
+        # clear existing widgets
+        for child in self.time_box.winfo_children():
+            child.destroy()
+        # decide date to use for determining season: prefer selected date if valid, otherwise today
+        try:
+            date_obj = self.selected_date()
+        except Exception:
+            date_obj = dt.date.today()
+        hours = self.build_time_hours_for_date(date_obj)
+        self.time_vars = {}
+        for ix, hh in enumerate(hours):
+            var = tk.BooleanVar(value=False)
+            self.time_vars[hh] = var
+            ttk.Checkbutton(self.time_box, text=f"{hh}시", variable=var).grid(row=ix//4, column=ix%4, sticky="w", padx=4, pady=2)
+    
     # ---- helpers ----
 
     def log_print(self, msg: str):
@@ -119,11 +189,10 @@ class TennisGUI(tk.Tk):
                 self.save_creds(user_id, password)
 
             # 날짜
-            date_str = self.entry_date.get().strip()
             try:
-                target_date = dt.datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                messagebox.showerror("오류", "예약일 형식이 올바르지 않습니다. YYYY-MM-DD")
+                target_date = self.selected_date()
+            except Exception:
+                messagebox.showerror("오류", "예약일을 선택하세요.")
                 return
 
             office_no = int(self.entry_office.get().strip())
