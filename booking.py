@@ -8,7 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
 from config import LOGIN_URL, WRITE_URL_TMPL
-from utils import TIME_VALUE_MAP, NoAvailablePreferredTime
+from utils import NoAvailablePreferredTime
 from driver import hide_popups
 
 
@@ -76,7 +76,6 @@ def parse_with_bs4(driver):
 
 def pick_time(driver, preferred_hours: List[str], timeout: int = 10) -> bool:
     """
-    preferred_hours: ["06","08",...]
     - 선호 시간 라디오가 존재하되 모두 disabled면 NoAvailablePreferredTime 발생
     - 하나라도 선택되면 True, (선호 시간이 DOM에 아예 없으면 False)
     """
@@ -87,9 +86,7 @@ def pick_time(driver, preferred_hours: List[str], timeout: int = 10) -> bool:
     selectable_found = False        # 클릭 가능한 선호 슬롯을 찾았는지
 
     for hh in preferred_hours:
-        val = TIME_VALUE_MAP.get(hh)
-        if not val:
-            continue
+        val = hh + ":00" # ex) "06:00"
 
         radios = driver.find_elements(By.CSS_SELECTOR, f'input[type="radio"][name="wr_2"][value="{val}"]')
         if not radios:

@@ -236,7 +236,7 @@ class TennisGUI(tk.Tk):
             self.log_print("작성 페이지 진입...")
             open_write_page(driver, office_no, target_date)
             try:
-                success = try_select_time_and_submit(driver, preferred_times, form_data)
+                success = try_select_time_and_submit(driver, preferred_times, form_data) # preferred times=['07','09',...]
             except NoAvailablePreferredTime as e:
                 self.log_print(f"❌ 예약 실패 — {str(e)}")
                 messagebox.showwarning("실패", f"{str(e)}")
